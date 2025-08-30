@@ -1,73 +1,60 @@
 import pandas as pd
-import gradio as gr
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
+import gradio as gr
 
-# Load and preprocess dataset
-def load_data():
-    url = "https://raw.githubusercontent.com/Garvitpujari/Depression-/main/Student%20Mental%20Health%20Analysis%20During%20Online%20Learning.csv"
-    df = pd.read_csv(url)
-    df = df.dropna()
-    df = df.drop(columns=["Name"])  # Drop Name column
-    return df
+# Load dataset
+csv_url = "https://raw.githubusercontent.com/Garvitpujari/Mental_Health_/main/cleaned_mental_health_dataset%20(1).csv"
+df = pd.read_csv(csv_url)
 
-df = load_data()
+# Target column
+target_column = "Depression"
+features = [col for col in df.columns if col != target_column]
 
-# Encode categorical features
-le_dict = {}
-df_encoded = df.copy()
-for col in df_encoded.select_dtypes(include="object").columns:
-    le = LabelEncoder()
-    df_encoded[col] = le.fit_transform(df_encoded[col])
-    le_dict[col] = le
+X = df[features]
+y = df[target_column]
 
-X = df_encoded.drop(columns=["Academic Performance Change"])
-y = df_encoded["Academic Performance Change"]
+# One-hot encode categorical variables
+X_encoded = pd.get_dummies(X, drop_first=True)
 
 # Train model
-model = RandomForestClassifier()
-model.fit(X, y)
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_encoded, y)
 
 # Prediction function
-def predict(gender, age, edu, screen_time, sleep, activity, stress, anxiety):
-    input_data = {
-        "Gender": [gender],
-        "Age": [int(age)],
-        "Education Level": [edu],
-        "Screen Time (hrs/day)": [float(screen_time)],
-        "Sleep Duration (hrs)": [float(sleep)],
-        "Physical Activity (hrs/week)": [float(activity)],
-        "Stress Level": [int(stress)],
-        "Anxious Before Exams": [anxiety],
+def predict_depression(Gender, Age, Sleep_Duration, Dietary_Habits,
+                       Suicidal_Thoughts, Financial_Stress,
+                       Family_History):
+    input_dict = {
+        'Gender_Male': 1 if Gender == "Male" else 0,
+        'Age': Age,
+        'Sleep Duration_7-8 hours': 1 if Sleep_Duration == "7-8 hours" else 0,
+        'Sleep Duration_Less than 5 hours': 1 if Sleep_Duration == "Less than 5 hours" else 0,
+        'Sleep Duration_More than 8 hours': 1 if Sleep_Duration == "More than 8 hours" else 0,
+        'Dietary Habits_Moderate': 1 if Dietary_Habits == "Moderate" else 0,
+        'Dietary Habits_Unhealthy': 1 if Dietary_Habits == "Unhealthy" else 0,
+        'Have you ever had suicidal thoughts ?_Yes': 1 if Suicidal_Thoughts == "Yes" else 0,
+        'Financial Stress': {"No stress":0, "Some stress":1, "High stress":2}[Financial_Stress],
+        'Family History of Mental Illness_Yes': 1 if Family_History == "Yes" else 0
     }
-
-    input_df = pd.DataFrame(input_data)
-
-    # Encode string fields
-    for col in input_df.select_dtypes(include="object").columns:
-        le = le_dict[col]
-        input_df[col] = le.transform(input_df[col])
-
-    prediction = model.predict(input_df)[0]
-    return f"📊 Predicted Academic Performance Change: {prediction}"
+    input_df = pd.DataFrame([input_dict]).reindex(columns=X_encoded.columns, fill_value=0)
+    pred = model.predict(input_df)[0]
+    return "Result: 0 ✅ No significant depression" if pred==0 else "Result: 1 ⚠️ Possible depression"
 
 # Gradio interface
-demo = gr.Interface(
-    fn=predict,
+iface = gr.Interface(
+    fn=predict_depression,
     inputs=[
-        gr.Radio(choices=df["Gender"].unique().tolist(), label="Gender"),
-        gr.Slider(minimum=int(df["Age"].min()), maximum=int(df["Age"].max()), value=int(df["Age"].mean()), label="Age"),
-        gr.Radio(choices=df["Education Level"].unique().tolist(), label="Education Level"),
-        gr.Slider(0, 24, step=0.5, value=4, label="Screen Time (hrs/day)"),
-        gr.Slider(0, 24, step=0.5, value=6, label="Sleep Duration (hrs)"),
-        gr.Slider(0, 20, step=1, value=3, label="Physical Activity (hrs/week)"),
-        gr.Slider(1, 10, step=1, value=5, label="Stress Level"),
-        gr.Radio(choices=df["Anxious Before Exams"].unique().tolist(), label="Anxious Before Exams")
+        gr.Radio(["Male", "Female"], label="Gender"),
+        gr.Number(label="Age"),
+        gr.Radio(["Less than 5 hours", "7-8 hours", "More than 8 hours"], label="Sleep Duration"),
+        gr.Radio(["Healthy", "Moderate", "Unhealthy"], label="Dietary Habits"),
+        gr.Radio(["Yes", "No"], label="Have you ever had suicidal thoughts?"),
+        gr.Radio(["No stress", "Some stress", "High stress"], label="Financial Stress"),
+        gr.Radio(["Yes", "No"], label="Family History of Mental Illness")
     ],
     outputs="text",
-    title="🎓 Academic Performance Change Predictor",
-    description="Enter your lifestyle and mental health stats to predict if your academic performance may change.",
+    title="Depression Predictor"
 )
 
 if __name__ == "__main__":
-    demo.launch()
+    iface.launch()
