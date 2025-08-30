@@ -1,3 +1,4 @@
-gradio
+gradio>=3.48,<4
 pandas
 scikit-learn
+numpy
